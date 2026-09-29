@@ -1,0 +1,10 @@
+numpy>=2.0
+pandas>=2.2
+matplotlib>=3.9
+requests>=2.32
+ecmwf-opendata>=0.3.34
+eccodes>=2.43
+nbformat>=5.10
+nbclient>=0.10
+ipykernel>=6.29
+tzdata>=2025.1

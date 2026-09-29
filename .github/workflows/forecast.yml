@@ -1,0 +1,57 @@
+name: Update surf forecast
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '35 6,12,18,0 * * *'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: forecast
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Restore private transformation matrix
+        env:
+          MATRIX_B64: ${{ secrets.WAVE_TRANSFER_MATRIX_B64 }}
+        run: |
+          test -n "$MATRIX_B64"
+          mkdir -p matrix
+          printf '%s' "$MATRIX_B64" | base64 --decode > matrix/east_matrix.txt
+          test "$(wc -l < matrix/east_matrix.txt)" -eq 24
+      - name: Run ECMWF forecast
+        run: python run_forecast.py --live --model EC --output output/ec_forecast.png
+      - name: Run GFS forecast
+        run: python run_forecast.py --live --model GFS --output output/gfs_forecast.png
+      - name: Build mobile model switcher
+        run: python build_preview.py
+      - name: Build Pages artifact
+        run: |
+          mkdir site
+          cp output/ec_forecast.png site/ec_forecast.png
+          cp output/gfs_forecast.png site/gfs_forecast.png
+          cp output/index.html site/index.html
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

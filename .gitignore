@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+data/cache/
+data/*.grib2
+data/probe_*
+data/*.log
+output/
+matrix/east_matrix.txt
+forecast_check.ipynb
+data/test_forecast.*
+data/initial_*
+.deploy/

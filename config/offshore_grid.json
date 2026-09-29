@@ -1,0 +1,22 @@
+{
+  "latitude": -33.25,
+  "longitude": 151.75,
+  "index": 711247,
+  "distance_km": 15.78173882262853,
+  "grid": {
+    "gridType": "regular_ll",
+    "Ni": 1440,
+    "Nj": 721,
+    "latitudeOfFirstGridPointInDegrees": 90.0,
+    "longitudeOfFirstGridPointInDegrees": 180.0,
+    "iDirectionIncrementInDegrees": 0.25,
+    "jDirectionIncrementInDegrees": 0.25,
+    "scanningMode": 0
+  },
+  "target": [
+    -33.281989967844346,
+    151.58462413473455
+  ],
+  "selected_at_utc": "2026-09-29T19:23:06.983423+00:00",
+  "method": "Global great-circle minimum over valid swh ocean cells"
+}
