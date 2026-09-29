@@ -39,7 +39,9 @@ def fetch_gfs_forecast(start=None, horizon_hours=48):
     start = utc(pd.Timestamp.now(tz='UTC') if start is None else start).ceil('3h')
     end = start + pd.Timedelta(hours=horizon_hours)
     base = {'latitude': TARGET[0], 'longitude': TARGET[1], 'forecast_days': 3,
-            'models': 'gfs_wave_025', 'timezone': 'GMT', 'hourly': MARINE_VARIABLES}
+            # Open-Meteo's current model identifier for the global 0.25° GFS wave run.
+            # (The older ``gfs_wave_025`` alias now returns HTTP 400.)
+            'models': 'ncep_gfswave025', 'timezone': 'GMT', 'hourly': MARINE_VARIABLES}
     marine = _get(MARINE_URL, base)
     wind = _get(WIND_URL, {'latitude': TARGET[0], 'longitude': TARGET[1], 'forecast_days': 3,
                            'timezone': 'GMT', 'hourly': 'wind_speed_10m,wind_direction_10m'})
