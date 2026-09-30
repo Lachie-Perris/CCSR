@@ -35,6 +35,8 @@ def compass_arrow(ax, x, y, direction, color=INK):
 
 
 def surf_height_band(value_ft):
+    if not np.isfinite(value_ft) or value_ft < 0:
+        return '—'
     for low, high, label in HEIGHT_BINS:
         if low <= value_ft < high:
             return label
@@ -81,10 +83,9 @@ def render_forecast(frame, tide=None, events=None, output=None):
                                   linewidth=0, facecolor='white', transform=fig.transFigure, zorder=-1)
             fig.add_artist(patch)
             fig.text(x + .018, .879, f'{local:%a %d %b}'.upper(), fontsize=13, weight='bold')
-            am, pm = daylight_means(frame, boundary)[day]
+            am, pm = daylight_means(frame, start)[day]
             fig.text(x + .018, .849, f'AM {surf_height_band(am)}', fontsize=15, weight='bold', color=TEAL)
             fig.text(x + .018, .821, f'PM {surf_height_band(pm)}', fontsize=15, weight='bold', color=TEAL)
-            fig.text(x + .34, .841, 'ft', fontsize=15, color=TEAL)
             fig.text(x + .018, .804, f'{local:%H:%M} → {finish:%a %H:%M}', fontsize=9.5, color=MUTED)
 
         fig.text(.045, .780, 'WAVE HEIGHT', fontsize=13, weight='bold')
@@ -148,7 +149,11 @@ def render_forecast(frame, tide=None, events=None, output=None):
                                facecolor='#e8eef3', transform=fig.transFigure, zorder=-1))
                 row = frame.iloc[len(frame)//2]
                 fig.text(x + .018, .450, title, fontsize=11.5, weight='bold', color=MUTED)
-                fig.text(x + .018, .423, f"{row[prefix+'_height_m']*3.28084:.1f}ft  {row[prefix+'_period_s']:.0f}s  {compass_name(row[prefix+'_direction_deg'])}", fontsize=13, weight='bold', color=INK)
+                height, period, direction = (row[prefix + suffix] for suffix in ['_height_m', '_period_s', '_direction_deg'])
+                detail = (f'{height*3.28084:.1f}ft  {period:.0f}s  {compass_name(direction)}'
+                          if np.isfinite([height, period, direction]).all() and height > 0 and period > 0
+                          else 'No active swell')
+                fig.text(x + .018, .423, detail, fontsize=13, weight='bold', color=INK)
             fig.text(.5, .388, 'Primary and secondary swell trains', ha='center', fontsize=10.5, color=MUTED)
         else:
             wind_title_y, wind_y, tide_title_y, tide_y = .425, .325, .268, .165

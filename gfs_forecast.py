@@ -1,7 +1,6 @@
 """GFS Wave 0.25 degree forecast adapter using Open-Meteo's public API."""
 from datetime import datetime, timezone
 import json
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -12,7 +11,7 @@ from surf_forecast import ROOT, TARGET, transform_waves, utc
 MARINE_URL = 'https://marine-api.open-meteo.com/v1/marine'
 WIND_URL = 'https://api.open-meteo.com/v1/forecast'
 MARINE_VARIABLES = ','.join([
-    'wave_height', 'wave_direction', 'wave_peak_period',
+    'wave_height', 'wave_direction', 'wave_period',
     'swell_wave_height', 'swell_wave_direction', 'swell_wave_period',
     'secondary_swell_wave_height', 'secondary_swell_wave_direction',
     'secondary_swell_wave_period',
@@ -49,22 +48,27 @@ def fetch_gfs_forecast(start=None, horizon_hours=48):
     start = utc(pd.Timestamp.now(tz='UTC') if start is None else start).ceil('3h')
     end = start + pd.Timedelta(hours=horizon_hours)
     latitude, longitude = _offshore_location()
-    base = {'latitude': latitude, 'longitude': longitude, 'forecast_days': 3,
+    # Explicit dates cover the inclusive endpoint even when start rounds to midnight.
+    window = {'start_date': start.strftime('%Y-%m-%d'), 'end_date': end.strftime('%Y-%m-%d')}
+    base = {'latitude': latitude, 'longitude': longitude, **window,
             # Open-Meteo's current model identifier for the global 0.25° GFS wave run.
             # (The older ``gfs_wave_025`` alias now returns HTTP 400.)
             'models': 'ncep_gfswave025', 'timezone': 'GMT', 'cell_selection': 'sea',
             'hourly': MARINE_VARIABLES}
     marine = _get(MARINE_URL, base)
-    wind = _get(WIND_URL, {'latitude': latitude, 'longitude': longitude, 'forecast_days': 3,
+    wind = _get(WIND_URL, {'latitude': latitude, 'longitude': longitude, **window,
+                           'models': 'gfs_global', 'cell_selection': 'nearest',
                            'timezone': 'GMT', 'hourly': 'wind_speed_10m,wind_direction_10m'})
     index = pd.date_range(start, end, freq='3h', tz='UTC', name='time_utc')
     frame = pd.DataFrame(index=index)
     frame['offshore_height_m'] = _series(marine, 'wave_height', index)
     frame['wave_direction_deg'] = _series(marine, 'wave_direction', index)
-    frame['peak_period_s'] = _series(marine, 'wave_peak_period', index)
+    # GFS wave_period maps to NOAA PERPW (peak period); wave_peak_period is null.
+    # Source: open-meteo/Sources/App/Gfs/GfsWaveVariable.swift, gribIndexName.
+    frame['peak_period_s'] = _series(marine, 'wave_period', index)
     frame['wind_speed_kn'] = _series(wind, 'wind_speed_10m', index) * 0.5399568
     frame['wind_direction_deg'] = _series(wind, 'wind_direction_10m', index)
-    for prefix, name in [('swell_wave', 'primary_swell'), ('secondary_swell', 'secondary_swell')]:
+    for prefix, name in [('swell_wave', 'primary_swell'), ('secondary_swell_wave', 'secondary_swell')]:
         frame[f'{name}_height_m'] = _series(marine, f'{prefix}_height', index)
         frame[f'{name}_direction_deg'] = _series(marine, f'{prefix}_direction', index)
         frame[f'{name}_period_s'] = _series(marine, f'{prefix}_period', index)
