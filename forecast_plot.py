@@ -81,7 +81,7 @@ def render_forecast(frame, tide=None, events=None, output=None, window=None):
     with plt.rc_context({'font.family':'DejaVu Sans', 'font.size':12,
                          'text.color':INK, 'axes.labelcolor':MUTED}):
         fig = plt.figure(figsize=(6, 7.5), dpi=180, facecolor=BG)
-        fig.text(.045, .957, 'SURF FORECAST', fontsize=23, weight='bold')
+        fig.text(.045, .957, 'CCSR Weekend Forecast', fontsize=21, weight='bold')
         model = str(frame.attrs.get('model', frame.attrs.get('source', 'ECMWF'))).upper()
         fig.text(.045, .924, f'{model}  {run:%d %b %Y} / {run:%H} UTC', fontsize=11.5, color=MUTED)
 
@@ -158,7 +158,6 @@ def render_forecast(frame, tide=None, events=None, output=None, window=None):
                           if np.isfinite([height, period, direction]).all() and height > 0 and period > 0
                           else 'No active swell')
                 fig.text(x + .018, .423, detail, fontsize=13, weight='bold', color=INK)
-            fig.text(.5, .388, 'Primary and secondary swell trains', ha='center', fontsize=10.5, color=MUTED)
         else:
             wind_title_y, wind_y, tide_title_y, tide_y = .425, .325, .268, .165
 
@@ -170,6 +169,11 @@ def render_forecast(frame, tide=None, events=None, output=None, window=None):
         for timestamp, row in samples.iterrows():
             x = (timestamp - start) / (end - start)
             compass_arrow(wind_ax, x, .82, row.wind_direction_deg, '#3e70a0')
+            # Compass labels retain the standard wind-from convention.
+            wind_ax.text(x, .58, compass_name(row.wind_direction_deg),
+                         transform=wind_ax.transAxes, ha='center', va='top',
+                         fontsize=7, color='#3e70a0',
+                         bbox={'facecolor': 'white', 'edgecolor': 'none', 'alpha': .85, 'pad': .5})
 
         fig.text(.045, tide_title_y, 'TIDE / m', fontsize=13, weight='bold')
         tide_ax.set_position([left, tide_y, right-left, .085])
