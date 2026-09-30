@@ -26,9 +26,12 @@ def compass_name(degrees):
 
 
 def compass_arrow(ax, x, y, direction, color=INK):
-    """North-up source bearing; arrowhead points toward the FROM direction."""
-    angle = np.deg2rad(direction)
-    dx, dy = np.sin(angle) * .016, np.cos(angle) * .18
+    """Convert a meteorological FROM bearing to a north-up travel arrow."""
+    angle = np.deg2rad((direction + 180) % 360)
+    # Physical dimensions preserve the bearing on axes of different shapes.
+    box = ax.get_window_extent().transformed(ax.figure.dpi_scale_trans.inverted())
+    dx = np.sin(angle) * 6 / (72 * box.width)
+    dy = np.cos(angle) * 6 / (72 * box.height)
     ax.annotate('', xy=(x + dx, y + dy), xytext=(x - dx, y - dy),
                 xycoords='axes fraction', textcoords='axes fraction',
                 arrowprops={'arrowstyle':'-|>', 'lw':1.5, 'color':color, 'mutation_scale':11})
@@ -165,8 +168,8 @@ def render_forecast(frame, tide=None, events=None, output=None, window=None):
         wind_ax.fill_between(t, frame.wind_speed_kn, color='#3e70a0', alpha=.1)
         wind_ax.set_ylim(0, max(8, frame.wind_speed_kn.max()*1.7))
         for timestamp, row in samples.iterrows():
-            wind_ax.text(timestamp, .88, compass_name(row.wind_direction_deg),
-                         transform=wind_ax.get_xaxis_transform(), ha='center', va='center', fontsize=10.5, color='#3e70a0')
+            x = (timestamp - start) / (end - start)
+            compass_arrow(wind_ax, x, .82, row.wind_direction_deg, '#3e70a0')
 
         fig.text(.045, tide_title_y, 'TIDE / m', fontsize=13, weight='bold')
         tide_ax.set_position([left, tide_y, right-left, .085])
