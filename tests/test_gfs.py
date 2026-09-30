@@ -5,10 +5,19 @@ from unittest.mock import patch
 import pandas as pd
 
 from gfs_forecast import fetch_gfs_forecast
-from forecast_plot import surf_height_band
+from forecast_plot import surf_height_band, weekend_window, daylight_means
 
 
 class GfsChecks(unittest.TestCase):
+    def test_friday_selects_weekend_across_dst(self):
+        start, end = weekend_window('2026-10-02T12:00:00+10:00')
+        self.assertEqual(start.strftime('%Y-%m-%d %H:%M'), '2026-10-03 00:00')
+        self.assertEqual(end.strftime('%Y-%m-%d %H:%M'), '2026-10-05 00:00')
+        self.assertEqual((end - start).total_seconds() / 3600, 47)
+        index = pd.date_range(start, end, freq='h')
+        frame = pd.DataFrame({'nearshore_height_ft': [2 if t.day == 3 else 5 for t in index]}, index=index)
+        self.assertEqual(daylight_means(frame, start), [(2, 2), (5, 5)])
+
     def test_missing_height_is_not_large_surf(self):
         self.assertEqual(surf_height_band(float('nan')), '—')
 

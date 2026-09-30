@@ -167,8 +167,8 @@ def fetch_forecast(run=None, start=None, source='ecmwf', workers=2, horizon_hour
     run = latest_complete_run(source) if run is None else utc(run)
     start = utc(pd.Timestamp.now(tz='UTC') if start is None else start).ceil('3h')
     first = int((start - run) / pd.Timedelta(hours=1))
-    if horizon_hours not in (48, 120) or first < 0 or first + horizon_hours > 144 or first % 3:
-        raise ValueError('Forecast window must be 48 or 120 hours, at three-hour intervals, through hour 144')
+    if horizon_hours <= 0 or horizon_hours % 3 or first < 0 or first + horizon_hours > 144 or first % 3:
+        raise ValueError('Requested weekend must fit within the model\'s 144-hour three-hourly forecast window')
     steps = list(range(first, first + horizon_hours + 1, 3))
     if GRID_FILE.exists():
         grid = json.loads(GRID_FILE.read_text())

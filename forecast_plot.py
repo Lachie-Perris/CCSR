@@ -46,8 +46,8 @@ def surf_height_band(value_ft):
 def daylight_means(frame, start):
     result = []
     for offset in (0, 1):
-        day_start = start + pd.Timedelta(days=offset)
-        day_end = day_start + pd.Timedelta(days=1)
+        day_start = start.tz_convert(TZ).normalize() + pd.DateOffset(days=offset)
+        day_end = day_start + pd.DateOffset(days=1)
         block = frame.loc[(frame.index >= day_start) & (frame.index < day_end)]
         local_hours = block.index.tz_convert(TZ).hour
         result.append((block.loc[(local_hours >= 6) & (local_hours < 12)].nearshore_height_ft.mean(),
@@ -55,9 +55,20 @@ def daylight_means(frame, start):
     return result
 
 
-def render_forecast(frame, tide=None, events=None, output=None):
+def weekend_window(now=None):
+    """Upcoming Saturday through Monday midnight, in Sydney civil time."""
+    now = pd.Timestamp.now(tz=TZ) if now is None else pd.Timestamp(now).tz_convert(TZ)
+    start = now.normalize() + pd.DateOffset(days=(5 - now.weekday()) % 7)
+    return start, start + pd.DateOffset(days=2)
+
+
+def render_forecast(frame, tide=None, events=None, output=None, window=None):
+    if window is not None:
+        frame = frame.loc[(frame.index >= window[0]) & (frame.index <= window[1])].copy()
+        if frame.empty:
+            raise ValueError('Forecast data does not cover the requested weekend')
     t = frame.index.tz_convert(TZ)
-    start, end = frame.index[0], frame.index[-1]
+    start, end = window if window is not None else (frame.index[0], frame.index[-1])
     run = pd.Timestamp(frame.attrs['run_utc'])
     samples = frame.iloc[::2].iloc[:-1]  # Six-hour markers, never interpolated.
     tick_times = samples.index.tz_convert(TZ)
@@ -68,17 +79,13 @@ def render_forecast(frame, tide=None, events=None, output=None):
                          'text.color':INK, 'axes.labelcolor':MUTED}):
         fig = plt.figure(figsize=(6, 7.5), dpi=180, facecolor=BG)
         fig.text(.045, .957, 'SURF FORECAST', fontsize=23, weight='bold')
-        fig.text(.965, .963, '48 HOURS', fontsize=12, weight='bold', ha='right', color=TEAL)
         model = str(frame.attrs.get('model', frame.attrs.get('source', 'ECMWF'))).upper()
         fig.text(.045, .924, f'{model}  {run:%d %b %Y} / {run:%H} UTC', fontsize=11.5, color=MUTED)
-        fig.text(.965, .924, 'Local time: Sydney', fontsize=11.5, ha='right', color=MUTED)
 
         # Two real 24-hour windows, shown explicitly to avoid implying calendar-day extrema.
         for day, x in enumerate([.045, .525]):
-            boundary = start + pd.Timedelta(hours=24 * day)
-            block = frame.loc[(frame.index >= boundary) & (frame.index < boundary + pd.Timedelta(hours=24))]
+            boundary = start.tz_convert(TZ).normalize() + pd.DateOffset(days=day)
             local = boundary.tz_convert(TZ)
-            finish = (boundary + pd.Timedelta(hours=24)).tz_convert(TZ)
             patch = FancyBboxPatch((x, .809), .43, .095, boxstyle='round,pad=.008,rounding_size=.01',
                                   linewidth=0, facecolor='white', transform=fig.transFigure, zorder=-1)
             fig.add_artist(patch)
@@ -86,18 +93,15 @@ def render_forecast(frame, tide=None, events=None, output=None):
             am, pm = daylight_means(frame, start)[day]
             fig.text(x + .018, .849, f'AM {surf_height_band(am)}', fontsize=15, weight='bold', color=TEAL)
             fig.text(x + .018, .821, f'PM {surf_height_band(pm)}', fontsize=15, weight='bold', color=TEAL)
-            fig.text(x + .018, .804, f'{local:%H:%M} → {finish:%a %H:%M}', fontsize=9.5, color=MUTED)
 
         fig.text(.045, .780, 'WAVE HEIGHT', fontsize=13, weight='bold')
-        fig.text(.48, .780, 'Nearshore', fontsize=11.5, color=TEAL, weight='bold')
-        fig.text(.735, .780, '- - Offshore', fontsize=11.5, color=BLUE)
         wave_ax = fig.add_axes([left, .635, right-left, .126])
         wind_ax = fig.add_axes([left, .265, right-left, .09])
         tide_ax = fig.add_axes([left, .105, right-left, .085])
 
         def style_axis(ax, ticks=False):
             ax.set_facecolor('white')
-            ax.set_xlim(t[0], t[-1])
+            ax.set_xlim(start, end)
             ax.set_xticks(x_ticks)
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M', tz=TZ))
             ax.yaxis.set_major_locator(MaxNLocator(nbins=3, min_n_ticks=2))
@@ -108,7 +112,7 @@ def render_forecast(frame, tide=None, events=None, output=None):
             ax.set_axisbelow(True)
             for spine in ax.spines.values():
                 spine.set_visible(False)
-            ax.axvline(start + pd.Timedelta(hours=24), color='#c6d4df', lw=1.1)
+            ax.axvline(start.tz_convert(TZ).normalize() + pd.DateOffset(days=1), color='#c6d4df', lw=1.1)
             # Nighttime shading: the clock is local, including daylight-saving changes.
             dates = pd.date_range(t[0].normalize() - pd.Timedelta(days=1), t[-1].normalize(), freq='D')
             for date in dates:
@@ -121,10 +125,8 @@ def render_forecast(frame, tide=None, events=None, output=None):
         wave_ax.bar(t[:-1], frame.nearshore_height_ft.iloc[:-1], width=2.5/24,
                     align='edge', color=TEAL, alpha=.19, linewidth=0)
         wave_ax.plot(t, frame.nearshore_height_ft, color=TEAL, lw=2.1)
-        wave_ax.plot(t, frame.offshore_height_ft, color=BLUE, lw=1.5, ls=(0,(3,2)))
-        wave_ax.set_ylim(0, max(frame.nearshore_height_ft.max(), frame.offshore_height_ft.max()) * 1.15)
+        wave_ax.set_ylim(0, max(1, frame.nearshore_height_ft.max() * 1.15))
 
-        fig.text(.045, .581, 'OFFSHORE / peak period + direction', fontsize=12.5, weight='bold')
         direction_ax = fig.add_axes([left, .510, right-left, .06])
         direction_ax.set_axis_off()
         # Use centres of the eight six-hour columns for legible source bearings.
@@ -133,7 +135,6 @@ def render_forecast(frame, tide=None, events=None, output=None):
             compass_arrow(direction_ax, x, .65, row.wave_direction_deg, TEAL)
             direction_ax.text(x, .03, f'{row.peak_period_s:.0f}s {compass_name(row.wave_direction_deg)}',
                               ha='center', va='bottom', fontsize=11, color=INK)
-        fig.text(.045, .493, 'Combined waves; arrows point to the source.', fontsize=10.5, color=MUTED)
 
         swell_columns = ['primary_swell_height_m', 'primary_swell_period_s', 'primary_swell_direction_deg',
                          'secondary_swell_height_m', 'secondary_swell_period_s', 'secondary_swell_direction_deg']
@@ -167,7 +168,7 @@ def render_forecast(frame, tide=None, events=None, output=None):
             wind_ax.text(timestamp, .88, compass_name(row.wind_direction_deg),
                          transform=wind_ax.get_xaxis_transform(), ha='center', va='center', fontsize=10.5, color='#3e70a0')
 
-        fig.text(.045, tide_title_y, 'TIDE / m LAT', fontsize=13, weight='bold')
+        fig.text(.045, tide_title_y, 'TIDE / m', fontsize=13, weight='bold')
         tide_ax.set_position([left, tide_y, right-left, .085])
         if tide is not None:
             tide_ax.plot(tide.index.tz_convert(TZ), tide, color='#74679b', lw=1.9)
@@ -178,8 +179,6 @@ def render_forecast(frame, tide=None, events=None, output=None):
         else:
             tide_ax.text(.5, .5, 'BOM tide data unavailable', ha='center', transform=tide_ax.transAxes, fontsize=12, color=MUTED)
 
-        fig.text(.045, .052, f'{t[0]:%d %b %H:%M} - {t[-1]:%d %b %H:%M}', fontsize=10.5, color=MUTED)
-        fig.text(.965, .052, 'BOM*', ha='right', fontsize=10.5, color=MUTED)
         if output is not None:
             output = Path(output)
             output.parent.mkdir(parents=True, exist_ok=True)
