@@ -1,5 +1,6 @@
 """GFS Wave 0.25 degree forecast adapter using Open-Meteo's public API."""
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 
 import numpy as np
@@ -34,16 +35,27 @@ def _series(payload, key, index):
     return pd.Series(values, index=pd.to_datetime(payload['hourly']['time'], utc=True), dtype=float).reindex(index)
 
 
+def _offshore_location():
+    """Use the one-time locked offshore point for both model requests."""
+    lock = ROOT / 'config/offshore_grid.json'
+    if lock.exists():
+        saved = json.loads(lock.read_text(encoding='utf-8'))
+        return float(saved['latitude']), float(saved['longitude'])
+    return TARGET
+
+
 def fetch_gfs_forecast(start=None, horizon_hours=48):
     """Return the same normalized columns as the ECMWF adapter plus swell partitions."""
     start = utc(pd.Timestamp.now(tz='UTC') if start is None else start).ceil('3h')
     end = start + pd.Timedelta(hours=horizon_hours)
-    base = {'latitude': TARGET[0], 'longitude': TARGET[1], 'forecast_days': 3,
+    latitude, longitude = _offshore_location()
+    base = {'latitude': latitude, 'longitude': longitude, 'forecast_days': 3,
             # Open-Meteo's current model identifier for the global 0.25° GFS wave run.
             # (The older ``gfs_wave_025`` alias now returns HTTP 400.)
-            'models': 'ncep_gfswave025', 'timezone': 'GMT', 'hourly': MARINE_VARIABLES}
+            'models': 'ncep_gfswave025', 'timezone': 'GMT', 'cell_selection': 'sea',
+            'hourly': MARINE_VARIABLES}
     marine = _get(MARINE_URL, base)
-    wind = _get(WIND_URL, {'latitude': TARGET[0], 'longitude': TARGET[1], 'forecast_days': 3,
+    wind = _get(WIND_URL, {'latitude': latitude, 'longitude': longitude, 'forecast_days': 3,
                            'timezone': 'GMT', 'hourly': 'wind_speed_10m,wind_direction_10m'})
     index = pd.date_range(start, end, freq='3h', tz='UTC', name='time_utc')
     frame = pd.DataFrame(index=index)
@@ -58,7 +70,8 @@ def fetch_gfs_forecast(start=None, horizon_hours=48):
         frame[f'{name}_period_s'] = _series(marine, f'{prefix}_period', index)
     required = ['offshore_height_m', 'wave_direction_deg', 'peak_period_s', 'wind_speed_kn', 'wind_direction_deg']
     if frame[required].isna().any().any():
-        raise ValueError('GFS forecast returned missing core wave or wind values')
+        missing = {column: int(frame[column].isna().sum()) for column in required}
+        raise ValueError(f'GFS forecast returned missing core wave or wind values: {missing}')
     frame = transform_waves(frame)
     frame.attrs = {'run_utc': datetime.now(timezone.utc).isoformat(), 'source': 'GFS Wave 0.25 via Open-Meteo',
                    'grid': {'latitude': float(marine.get('latitude', TARGET[0])),
