@@ -28,6 +28,7 @@ The lookup is taken exactly from the existing project's `surf_forecast.py` (`ROW
 - Columns 12 and 14 are unused in that legacy lookup. They are preserved, not reinterpreted as evenly spaced periods.
 - Tide does not modify this fixed matrix. It is plotted independently.
 - One metre is exactly `1 / 0.3048` feet. Plot wave heights are in feet.
+- The weekend surf curve and AM/PM bands use the requested traditional/Hawaiian display convention: half the transformed nearshore height in feet (2 becomes 1, 6 becomes 3, 12 becomes 6). Conversion happens before AM/PM band selection. Raw model/CSV values and primary/secondary offshore swell heights remain physical feet/metres. This display convention does not turn modeled significant wave height into a measured breaking-wave face height.
 
 ## BOM tide test data
 

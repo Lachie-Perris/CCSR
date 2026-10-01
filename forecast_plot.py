@@ -15,6 +15,8 @@ MUTED = '#647987'
 TEAL = '#007f7d'
 BLUE = '#6893ad'
 BG = '#f4f7fa'
+# User-specified traditional/Hawaiian display convention; model heights stay intact.
+TRADITIONAL_HEIGHT_FACTOR = 0.5
 COMPASS = np.array(['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'])
 HEIGHT_BINS = ((0, 1, '0-1ft'), (1, 2, '1-2ft'), (2, 3, '2-3ft'), (3, 4, '3-4ft'),
                (4, 5, '4-5ft'), (5, 6, '5-6ft'), (6, 8, '6-8ft'), (8, 10, '8-10ft'),
@@ -66,6 +68,8 @@ def weekend_window(now=None):
 
 
 def render_forecast(frame, tide=None, events=None, output=None, window=None):
+    frame = frame.copy()
+    frame['nearshore_height_ft'] *= TRADITIONAL_HEIGHT_FACTOR
     if window is not None:
         frame = frame.loc[(frame.index >= window[0]) & (frame.index <= window[1])].copy()
         if frame.empty:
