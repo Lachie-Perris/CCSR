@@ -16,7 +16,7 @@ def main():
     parser.add_argument('--run', help='Optional explicit UTC model initialization (ISO timestamp)')
     parser.add_argument('--start', help='Optional forecast start (ISO timestamp; rounded up to 3 h)')
     parser.add_argument('--no-tides', action='store_true', help='Explicitly omit tides')
-    parser.add_argument('--tides', type=Path, default=ROOT / 'data/bom_tide_events.csv')
+    parser.add_argument('--tides', type=Path, help='Explicit saved tide table; live runs otherwise fetch BOM')
     parser.add_argument('--output', type=Path, default=ROOT / 'output/forecast.png')
     args = parser.parse_args()
     if (args.run or args.start) and not args.live:
@@ -43,8 +43,16 @@ def main():
         frame = load_forecast(ROOT / 'data/test_forecast.csv').copy()
         window = weekend_window(frame.index[0])
         frame.attrs['model'] = 'ECMWF'
-    events = None if args.no_tides else load_tide_events(args.tides)
     bounds = window or (frame.index[0], frame.index[-1])
+    if args.no_tides:
+        events = None
+    elif args.tides:
+        events = load_tide_events(args.tides)
+    elif args.live:
+        from bom_tides import fetch_tide_events
+        events = fetch_tide_events(*bounds)
+    else:
+        events = load_tide_events()
     tide = tide_curve(events, *bounds) if events is not None else None
     render_forecast(frame, tide=tide, events=events, output=args.output, window=window)
     print(f'Created {args.output}')

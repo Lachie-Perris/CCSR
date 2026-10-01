@@ -214,6 +214,11 @@ def load_tide_events(path=ROOT / 'data/bom_tide_events.csv'):
     result = pd.read_csv(path)
     result['time_utc'] = pd.to_datetime(result.time_local, utc=True)
     result = result.set_index('time_utc').sort_index()
+    return validate_tide_events(result)
+
+
+def validate_tide_events(result):
+    """Shared integrity checks for downloaded and saved BOM predictions."""
     if result.index.has_duplicates or not np.isfinite(result.height_m).all():
         raise ValueError('Invalid tide event table')
     if (result.height_m < -5).any() or (result.height_m > 15).any():
