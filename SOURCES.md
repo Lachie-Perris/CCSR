@@ -46,6 +46,10 @@ These are astronomical predictions for the existing regional proxy station, not 
 
 ## GFS
 
+## Forecast views
+
+The page offers **This week** (the full available range from the next three-hour sample) and **The weekend** (the next Saturday/Sunday). Full-range EC uses a complete long-range cycle through lead hour 360; full-range GFS requests 16 days and trims only unavailable trailing samples. Full-range graphics stack the same two-day panels vertically so text remains readable on phones, and download as a single PNG. Partial first/last days show only available samples; missing AM/PM periods display a dash. BOM tables are fetched in consecutive seven-day blocks to bracket the full range. Model/view outputs fail independently; missing combinations display **coming soon**, including when all four outputs fail. Each scheduled run retries all combinations.
+
 The GFS option requests the GFS Wave 0.25° marine model from [Open-Meteo's Marine Weather API](https://open-meteo.com/en/docs/marine-weather-api), plus its standard forecast API for 10 m wind. The API documentation lists wave height, wave direction, wave peak period, swell and secondary-swell variables, and identifies GFS Wave 0.25° as a three-hourly global model. Open-Meteo attribution and licence terms apply. This is a separate GFS source path; ECMWF remains the EC option.
 
 [BOM tide conditions, copyright and disclaimers](https://www.bom.gov.au/oceanography/projects/ntc/nsw_tide_tables.shtml) apply to the source predictions and modified products. This project is not endorsed by BOM. Before public deployment, include the required BOM disclaimer with the figure or through a clear attribution link as specified in those conditions.

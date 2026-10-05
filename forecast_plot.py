@@ -67,7 +67,7 @@ def weekend_window(now=None):
     return start, start + pd.DateOffset(days=2)
 
 
-def render_forecast(frame, tide=None, events=None, output=None, window=None):
+def render_forecast(frame, tide=None, events=None, output=None, window=None, title='CCSR Weekend Forecast'):
     frame = frame.copy()
     frame['nearshore_height_ft'] *= TRADITIONAL_HEIGHT_FACTOR
     if window is not None:
@@ -85,13 +85,15 @@ def render_forecast(frame, tide=None, events=None, output=None, window=None):
     with plt.rc_context({'font.family':'DejaVu Sans', 'font.size':12,
                          'text.color':INK, 'axes.labelcolor':MUTED}):
         fig = plt.figure(figsize=(6, 7.5), dpi=180, facecolor=BG)
-        fig.text(.045, .957, 'CCSR Weekend Forecast', fontsize=21, weight='bold')
+        fig.text(.045, .957, title, fontsize=21, weight='bold')
         model = str(frame.attrs.get('model', frame.attrs.get('source', 'ECMWF'))).upper()
         fig.text(.045, .924, f'{model}  {run:%d %b %Y} / {run:%H} UTC', fontsize=11.5, color=MUTED)
 
         # Two real 24-hour windows, shown explicitly to avoid implying calendar-day extrema.
         for day, x in enumerate([.045, .525]):
             boundary = start.tz_convert(TZ).normalize() + pd.DateOffset(days=day)
+            if boundary >= end:
+                continue
             local = boundary.tz_convert(TZ)
             patch = FancyBboxPatch((x, .809), .43, .095, boxstyle='round,pad=.008,rounding_size=.01',
                                   linewidth=0, facecolor='white', transform=fig.transFigure, zorder=-1)
@@ -195,3 +197,28 @@ def render_forecast(frame, tide=None, events=None, output=None, window=None):
             output.parent.mkdir(parents=True, exist_ok=True)
             fig.savefig(output, dpi=180, facecolor=BG)
         return fig
+
+
+def render_full_forecast(frame, events=None, output=None):
+    """Stack matching two-day panels, preserving phone-sized text over the full range."""
+    from PIL import Image
+    from surf_forecast import tide_curve
+    panels = []
+    start = frame.index[0].tz_convert(TZ)
+    end = frame.index[-1].tz_convert(TZ)
+    while start < end:
+        stop = min(start.normalize() + pd.DateOffset(days=2), end)
+        tide = tide_curve(events, start, stop) if events is not None else None
+        fig = render_forecast(frame, tide, events, window=(start, stop), title='CCSR This Week Forecast')
+        fig.canvas.draw()
+        panels.append(Image.fromarray(np.asarray(fig.canvas.buffer_rgba())).convert('RGB'))
+        plt.close(fig)
+        start = stop
+    image = Image.new('RGB', (1080, sum(panel.height for panel in panels)), BG)
+    y = 0
+    for panel in panels:
+        image.paste(panel, (0, y))
+        y += panel.height
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    image.save(output)

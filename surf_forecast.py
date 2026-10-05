@@ -191,7 +191,9 @@ def resample_forecast(frame, index):
 def fetch_forecast(run=None, start=None, source='ecmwf', workers=2, horizon_hours=48):
     start = utc(pd.Timestamp.now(tz='UTC') if start is None else start).ceil('3h')
     explicit_run = run is not None
-    run = latest_complete_run(source) if run is None else utc(run)
+    run = latest_complete_run(source, long_range=horizon_hours is None) if run is None else utc(run)
+    if horizon_hours is None:
+        horizon_hours = int((run + pd.Timedelta(hours=360) - start).total_seconds() / 3600)
     if not explicit_run and start + pd.Timedelta(hours=horizon_hours) > run + pd.Timedelta(hours=144):
         run = latest_complete_run(source, long_range=True)
     first = int((start - run) / pd.Timedelta(hours=1))

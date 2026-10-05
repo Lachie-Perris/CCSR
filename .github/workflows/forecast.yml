@@ -48,10 +48,22 @@ jobs:
         continue-on-error: true
         timeout-minutes: 10
         run: python run_forecast.py --live --model GFS --output output/gfs_forecast.png
+      - name: Run full ECMWF forecast
+        id: ec_week
+        continue-on-error: true
+        timeout-minutes: 25
+        run: python run_forecast.py --live --model EC --view week --output output/ec_week_forecast.png
+      - name: Run full GFS forecast
+        id: gfs_week
+        continue-on-error: true
+        timeout-minutes: 10
+        run: python run_forecast.py --live --model GFS --view week --output output/gfs_week_forecast.png
       - name: Exclude failed model outputs
         env:
           EC_OUTCOME: ${{ steps.ec.outcome }}
           GFS_OUTCOME: ${{ steps.gfs.outcome }}
+          EC_WEEK_OUTCOME: ${{ steps.ec_week.outcome }}
+          GFS_WEEK_OUTCOME: ${{ steps.gfs_week.outcome }}
         run: |
           if [ "$EC_OUTCOME" != success ]; then
             rm -f output/ec_forecast.png
@@ -61,12 +73,16 @@ jobs:
             rm -f output/gfs_forecast.png
             echo "::warning::GFS unavailable; retrying on the next scheduled run."
           fi
+          if [ "$EC_WEEK_OUTCOME" != success ]; then rm -f output/ec_week_forecast.png; fi
+          if [ "$GFS_WEEK_OUTCOME" != success ]; then rm -f output/gfs_week_forecast.png; fi
       - name: Build mobile model switcher
         run: python build_preview.py
       - name: Build Pages artifact
         run: |
           mkdir site
-          cp output/*_forecast.png site/
+          for image in output/*_forecast.png; do
+            if [ -s "$image" ]; then cp "$image" site/; fi
+          done
           cp output/index.html site/index.html
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

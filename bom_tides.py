@@ -66,17 +66,22 @@ def parse_predictions(html, start, end):
 def fetch_tide_events(start, end, output=ROOT / 'output/bom_tides.csv'):
     """Fetch anew on every live run; never silently reuse an expired snapshot."""
     first = utc(start).tz_convert(TZ).normalize() - pd.DateOffset(days=1)
-    if utc(end) >= (first + pd.DateOffset(days=6)).tz_convert('UTC'):
-        raise ValueError('BOM request is limited to a two-day forecast plus margins')
     params = {'type': 'tide', 'aac': STATION, 'date': first.strftime('%d-%m-%Y'),
               'days': 7, 'region': 'NSW', 'tz': 'Australia/Sydney', 'tz_js': 'Australia/Sydney'}
     with requests.Session() as session:
         session.mount('https://', HTTPAdapter(max_retries=Retry(
             total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])))
-        response = session.get(ENDPOINT, params=params, timeout=45)
-        response.raise_for_status()
-    events = parse_predictions(response.text, start, end)
-    events.attrs = {'station': STATION, 'source_url': response.url, 'datum': 'LAT',
+        tables, urls = [], []
+        cursor = first
+        while cursor <= utc(end).tz_convert(TZ).normalize() + pd.DateOffset(days=1):
+            params['date'] = cursor.strftime('%d-%m-%Y')
+            response = session.get(ENDPOINT, params=params, timeout=45)
+            response.raise_for_status()
+            tables.append(response.text)
+            urls.append(response.url)
+            cursor += pd.DateOffset(days=7)
+    events = parse_predictions(''.join(tables), start, end)
+    events.attrs = {'station': STATION, 'source_urls': urls, 'datum': 'LAT',
                     'retrieved_at_utc': pd.Timestamp.now(tz='UTC').isoformat(),
                     'curve': 'Local half-cosine interpolation of BOM high/low predictions'}
     if output is not None:

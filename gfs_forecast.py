@@ -46,10 +46,12 @@ def _offshore_location():
 def fetch_gfs_forecast(start=None, horizon_hours=48):
     """Return the same normalized columns as the ECMWF adapter plus swell partitions."""
     start = utc(pd.Timestamp.now(tz='UTC') if start is None else start).ceil('3h')
-    end = start + pd.Timedelta(hours=horizon_hours)
+    end = start + pd.Timedelta(hours=horizon_hours or 24 * 16)
     latitude, longitude = _offshore_location()
     # Explicit dates cover the inclusive endpoint even when start rounds to midnight.
     window = {'start_date': start.strftime('%Y-%m-%d'), 'end_date': end.strftime('%Y-%m-%d')}
+    if horizon_hours is None:
+        window = {'forecast_days': 16}
     base = {'latitude': latitude, 'longitude': longitude, **window,
             # Open-Meteo's current model identifier for the global 0.25° GFS wave run.
             # (The older ``gfs_wave_025`` alias now returns HTTP 400.)
@@ -60,6 +62,10 @@ def fetch_gfs_forecast(start=None, horizon_hours=48):
                            'models': 'gfs_global', 'cell_selection': 'nearest',
                            'timezone': 'GMT', 'hourly': 'wind_speed_10m,wind_direction_10m'})
     index = pd.date_range(start, end, freq='3h', tz='UTC', name='time_utc')
+    if horizon_hours is None:
+        end = min(pd.to_datetime(marine['hourly']['time'], utc=True).max(),
+                  pd.to_datetime(wind['hourly']['time'], utc=True).max())
+        index = pd.date_range(start, end, freq='3h', tz='UTC', name='time_utc')
     frame = pd.DataFrame(index=index)
     frame['offshore_height_m'] = _series(marine, 'wave_height', index)
     frame['wave_direction_deg'] = _series(marine, 'wave_direction', index)
@@ -73,6 +79,12 @@ def fetch_gfs_forecast(start=None, horizon_hours=48):
         frame[f'{name}_direction_deg'] = _series(marine, f'{prefix}_direction', index)
         frame[f'{name}_period_s'] = _series(marine, f'{prefix}_period', index)
     required = ['offshore_height_m', 'wave_direction_deg', 'peak_period_s', 'wind_speed_kn', 'wind_direction_deg']
+    if horizon_hours is None:
+        # Providers can pad the end of a model run with nulls; never fill beyond it.
+        valid = frame[required].notna().all(axis=1)
+        if not valid.any():
+            raise ValueError('No complete GFS forecast samples available')
+        frame = frame.loc[:valid[valid].index[-1]]
     if frame[required].isna().any().any():
         missing = {column: int(frame[column].isna().sum()) for column in required}
         raise ValueError(f'GFS forecast returned missing core wave or wind values: {missing}')
