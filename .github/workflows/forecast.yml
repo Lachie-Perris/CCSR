@@ -39,16 +39,34 @@ jobs:
           printf '%s' "$MATRIX_B64" | base64 --decode > matrix/east_matrix.txt
           test "$(wc -l < matrix/east_matrix.txt)" -eq 24
       - name: Run ECMWF forecast
+        id: ec
+        continue-on-error: true
+        timeout-minutes: 15
         run: python run_forecast.py --live --model EC --output output/ec_forecast.png
       - name: Run GFS forecast
+        id: gfs
+        continue-on-error: true
+        timeout-minutes: 10
         run: python run_forecast.py --live --model GFS --output output/gfs_forecast.png
+      - name: Exclude failed model outputs
+        env:
+          EC_OUTCOME: ${{ steps.ec.outcome }}
+          GFS_OUTCOME: ${{ steps.gfs.outcome }}
+        run: |
+          if [ "$EC_OUTCOME" != success ]; then
+            rm -f output/ec_forecast.png
+            echo "::warning::ECMWF unavailable; retrying on the next scheduled run."
+          fi
+          if [ "$GFS_OUTCOME" != success ]; then
+            rm -f output/gfs_forecast.png
+            echo "::warning::GFS unavailable; retrying on the next scheduled run."
+          fi
       - name: Build mobile model switcher
         run: python build_preview.py
       - name: Build Pages artifact
         run: |
           mkdir site
-          cp output/ec_forecast.png site/ec_forecast.png
-          cp output/gfs_forecast.png site/gfs_forecast.png
+          cp output/*_forecast.png site/
           cp output/index.html site/index.html
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
