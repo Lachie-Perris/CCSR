@@ -9,7 +9,7 @@ Source: [ECMWF open-data specification](https://www.ecmwf.int/en/forecasts/datas
 - `mwd` (140230): mean wave direction, degrees from true north, meteorological FROM convention. This is not direction at the spectral peak.
 - `10u` / `10v` (165 / 166): 10 m wind components, converted to knots and meteorological FROM bearings.
 
-The current wave and atmosphere streams are `wave` and `oper` for 00/06/12/18 UTC cycles. Each supplies three-hour steps through 144 hours. The saved example is a real model forecast, not synthetic data. It is a reproducible snapshot, not a claim of current conditions when opened later.
+The current wave and atmosphere streams are `wave` and `oper` for 00/06/12/18 UTC cycles. Each supplies three-hour steps through 144 hours. For weekends beyond that range, select a complete long-range 00/12 UTC cycle, using native six-hour steps from 150 through 360 hours. Interpolate those fields onto the display's three-hour grid before transformation (wave bearings wrap through north; wind interpolates as u/v components). The saved example is a real model forecast, not synthetic data. It is a reproducible snapshot, not a claim of current conditions when opened later.
 
 ## Fixed grid selection
 

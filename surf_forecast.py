@@ -93,11 +93,12 @@ def client(source='ecmwf'):
     return Client(source=source, model='ifs', resol='0p25', maximum_retries=2, retry_after=3)
 
 
-def latest_complete_run(source='ecmwf'):
-    """Choose a common wave/wind cycle with the full 144-hour horizon present."""
+def latest_complete_run(source='ecmwf', long_range=False):
+    """Choose a common wave/wind cycle with the required horizon published."""
     c = client(source)
-    wave = utc(c.latest(stream='wave', type='fc', step=144, param='swh'))
-    wind = utc(c.latest(stream='oper', type='fc', step=144, param='10u'))
+    options = {'step': 360 if long_range else 144}
+    wave = utc(c.latest(stream='wave', type='fc', param='swh', **options))
+    wind = utc(c.latest(stream='oper', type='fc', param='10u', **options))
     return min(wave, wind)
 
 
@@ -163,13 +164,40 @@ def transform_waves(frame, matrix_path=ROOT / 'matrix/east_matrix.txt'):
     return result
 
 
+def forecast_steps(first, last, run_hour):
+    """Enclose the window using native 3 h steps, then 6 h after day six."""
+    limit = 360 if run_hour in (0, 12) else 144
+    if first < 0 or last > limit or last <= first:
+        raise ValueError(f'Requested window exceeds the selected cycle\'s {limit}-hour range')
+    available = list(range(0, 145, 3))
+    if limit == 360:
+        available += list(range(150, 361, 6))
+    lo = max(s for s in available if s <= first)
+    hi = min(s for s in available if s >= last)
+    return [s for s in available if lo <= s <= hi]
+
+
+def resample_forecast(frame, index):
+    """Interpolate native fields; unwrap wave bearings across north before interpolation."""
+    frame = frame.copy()
+    frame['wave_direction_deg'] = np.rad2deg(np.unwrap(np.deg2rad(frame.wave_direction_deg)))
+    frame = frame.reindex(frame.index.union(index)).interpolate(method='time', limit_area='inside').loc[index]
+    frame['wave_direction_deg'] %= 360
+    if frame.isna().any().any():
+        raise ValueError('Native ECMWF fields do not bracket the requested window')
+    return frame
+
+
 def fetch_forecast(run=None, start=None, source='ecmwf', workers=2, horizon_hours=48):
-    run = latest_complete_run(source) if run is None else utc(run)
     start = utc(pd.Timestamp.now(tz='UTC') if start is None else start).ceil('3h')
+    explicit_run = run is not None
+    run = latest_complete_run(source) if run is None else utc(run)
+    if not explicit_run and start + pd.Timedelta(hours=horizon_hours) > run + pd.Timedelta(hours=144):
+        run = latest_complete_run(source, long_range=True)
     first = int((start - run) / pd.Timedelta(hours=1))
-    if horizon_hours <= 0 or horizon_hours % 3 or first < 0 or first + horizon_hours > 144 or first % 3:
-        raise ValueError('Requested weekend must fit within the model\'s 144-hour three-hourly forecast window')
-    steps = list(range(first, first + horizon_hours + 1, 3))
+    if horizon_hours <= 0 or horizon_hours % 3 or first % 3:
+        raise ValueError('Forecast window must use three-hour intervals')
+    steps = forecast_steps(first, first + horizon_hours, run.hour)
     if GRID_FILE.exists():
         grid = json.loads(GRID_FILE.read_text())
     else:
@@ -201,10 +229,14 @@ def fetch_forecast(run=None, start=None, source='ecmwf', workers=2, horizon_hour
             rows[step] = row
             print(f'Forecast {len(rows)}/{len(steps)}: lead {step} h', flush=True)
     frame = pd.DataFrame([rows[s] for s in steps], index=pd.DatetimeIndex([run + pd.Timedelta(hours=s) for s in steps], name='time_utc'))
+    frame = resample_forecast(frame, pd.date_range(start, periods=horizon_hours // 3 + 1,
+                                                  freq='3h', name='time_utc'))
     frame['wind_speed_kn'] = np.hypot(frame.u10_ms, frame.v10_ms) * 3600 / 1852
     frame['wind_direction_deg'] = (270 - np.rad2deg(np.arctan2(frame.v10_ms, frame.u10_ms))) % 360
     frame = transform_waves(frame)
     frame.attrs = {'run_utc': run.isoformat(), 'grid': grid, 'source': 'ECMWF IFS 0.25 degree',
+                   'native_steps_hours': steps,
+                   'interpolated_to_three_hours': any(s > 144 for s in steps),
                    'retrieved_at_utc': datetime.now(timezone.utc).isoformat()}
     return frame
 
